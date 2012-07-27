@@ -10,9 +10,9 @@
 
 @interface TileMillChildProcess ()
 
-@property (nonatomic, retain) NSTask *task;
-@property (nonatomic, retain) NSString *basePath;
-@property (nonatomic, retain) NSString *command;
+@property (nonatomic, strong) NSTask *task;
+@property (nonatomic, strong) NSString *basePath;
+@property (nonatomic, strong) NSString *command;
 @property (nonatomic, assign, getter=isLaunched) BOOL launched;
 
 - (void)receivedData:(NSNotification *)notification;
@@ -36,8 +36,8 @@
     
     if (self)
     {
-        basePath = [inBasePath retain];
-        command  = [inCommand retain];
+        basePath = inBasePath;
+        command  = inCommand;
     }
 
     return self;
@@ -47,11 +47,7 @@
 {
     [self stopProcess];
 
-    [task release];
-    [basePath release];
-    [command release];
 
-    [super dealloc];
 }
 
 #pragma mark -
@@ -61,8 +57,18 @@
     if ([(id <NSObject>)self.delegate respondsToSelector:@selector(childProcessDidStart:)])
         [self.delegate childProcessDidStart:self];
  
-    self.task = [[[NSTask alloc] init] autorelease];
+    self.task = [[NSTask alloc] init];
+    NSDictionary *defaultEnvironment = [[NSProcessInfo processInfo] environment];
+    NSMutableDictionary *environment = [[NSMutableDictionary alloc] initWithDictionary:defaultEnvironment];
     
+    // be proactive and make sure the local tilemill directory comes first on PATH
+    // to do all we can to avoid: https://github.com/mapbox/tilemill/issues/1348
+    NSString *path_prepend = [NSString stringWithFormat:@"%@;$PATH", [[NSBundle mainBundle] resourcePath]];
+    [environment setObject:path_prepend forKey:@"PATH"];
+    // clear out NODE_PATH
+    [environment setObject:@"" forKey:@"NODE_PATH"];
+
+    [self.task setEnvironment:environment];
     [self.task setStandardOutput:[NSPipe pipe]];
     [self.task setStandardError:[self.task standardOutput]];
     [self.task setCurrentDirectoryPath:self.basePath];
@@ -75,7 +81,7 @@
     
     [[[self.task standardOutput] fileHandleForReading] readInBackgroundAndNotify];
     
-    [self.task launch];    
+    [self.task launch];
 }
 
 - (void)stopProcess
@@ -84,11 +90,27 @@
                                                     name:NSFileHandleReadCompletionNotification 
                                                   object:[[self.task standardOutput] fileHandleForReading]];
 
+    // @TODO - check if [self.task isRunning] before terminating?
     [self.task terminate];
     [self.task waitUntilExit];
 
+    int status = [self.task terminationStatus];
+    if (status != 0)
+    {
+        NSTaskTerminationReason reason = [self.task terminationReason];
+        // TODO - catch signals and display crash/spin log from DiagosticReports
+        // http://cocoawithlove.com/2010/05/handling-unhandled-exceptions-and.html
+        if (reason == 2) // uncaught signal
+        {
+            if ([(id <NSObject>)self.delegate respondsToSelector:@selector(childProcess:didCrash:)])
+                [self.delegate childProcess:self didCrash:@"TileMill child process crashed on unhandled signal: please report to: https://github.com/mapbox/tilemill/issues\n"];
+        }
+    }
+
     if ([(id <NSObject>)self.delegate respondsToSelector:@selector(childProcessDidFinish:)])
+    {
         [self.delegate childProcessDidFinish:self];
+    }
 }
 
 - (void)receivedData:(NSNotification *)notification
@@ -97,17 +119,17 @@
     
     if ([data length])
     {
-        NSString *message = [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease];
+        NSString *message = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
 
         if ([(id <NSObject>)self.delegate respondsToSelector:@selector(childProcess:didSendOutput:)])
             [self.delegate childProcess:self didSendOutput:message];
         
-        if ([message hasPrefix:@"Started [Server Core"] && ! self.isLaunched)
+        if ([message hasPrefix:@"[tilemill] Started [Server Core"] && ! self.isLaunched)
         {
             self.launched = YES;
             NSScanner *aScanner = [NSScanner scannerWithString:message];
             NSInteger aPort;
-            [aScanner scanString:@"Started [Server Core:" intoString:NULL];
+            [aScanner scanString:@"[tilemill] Started [Server Core:" intoString:NULL];
             [aScanner scanInteger:&aPort];
             self.port = aPort;
             
@@ -115,9 +137,10 @@
                 [self.delegate childProcessDidSendFirstData:self];
         }
     }
-
     else
+    {
         [self stopProcess];
+    }
     
     [[notification object] readInBackgroundAndNotify];  
 }

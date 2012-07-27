@@ -8,9 +8,7 @@ var get = _(project.get).bind(project);
 <form><ul class='form fill-e scrolling'>
   <li class='text'>
     <h2><%= title %></h2>
-
     <% if (model.get('format') === 'sync') { %>
-    <% if (config.get('syncAccount') && config.get('syncAccessToken')) { %>
     <% var accountURL = config.get('syncURL') + '/' + config.get('syncAccount'); %>
     <% var mapURL = config.get('syncURL') + '/' + config.get('syncAccount') + '/map/' + model.get('project'); %>
       <div class='syncHelp'>
@@ -18,18 +16,8 @@ var get = _(project.get).bind(project);
         <b><a href='<%= mapURL %>' target='_blank'><%=mapURL%></a></b>
       </div>
       <div class='buttons centered'>
-        <a class='button' href='#/settings'>Use another account</a>
-        <a class='button' href='<%= accountURL %>' target='_blank'>My account</a>
-    </div>
-    <% } else { %>
-      <div class='syncHelp'>
-        If you don't have a MapBox account, we'll host your map free for 7 days.
+        <a class='button' href='#/settings'>Change account</a>
       </div>
-      <div class='buttons centered'>
-        <a class='button' href='#/settings'>Use my account</a>
-        <a class='button' href='http://mapbox.com/tour/' target='_blank'>Learn more</a>
-      </div>
-    <% } %>
     <% } %>
   </li>
   <% if (type === 'tiles') { %>
@@ -99,6 +87,20 @@ var get = _(project.get).bind(project);
     <input type='text' name='bounds' size='20' value='<%=get('bounds').join(',')%>' />
     <small class='description'>Shift + drag to select bounds.</small>
   </li>
+  <% if (model === project) { %>
+  <li>
+    <label for='scale'>Scale factor</label>
+    <div class='slider' data-key='scale' data-step='0.1' data-min='1' data-max='5'></div>
+    <small class='description'>Factor to scale map by.</small>
+  </li>
+  <% } %>
+  <% if (type === 'tiles') { %>
+  <li>
+    <label for='metatile'>MetaTile size</label>
+    <div class='slider' data-key='metatile' data-step='1' data-min='1' data-max='15'></div>
+    <small class='description'></small>
+  </li>
+  <% } %>
   <% if (model !== project && type === 'tiles') { %>
   <li>
     <input type='checkbox' name='_saveProject' value='1' <% if (model.get('format') === 'sync') %>checked='checked' disabled='disabled'<%;%>>

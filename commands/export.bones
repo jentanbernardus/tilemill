@@ -7,6 +7,9 @@ var util = require('util');
 var Step = require('step');
 var http = require('http');
 var chrono = require('chrono');
+var crashutil = require('../lib/crashutil');
+// node v6 -> v8 compatibility
+var existsSync = require('fs').existsSync || require('path').existsSync;
 
 command = Bones.Command.extend();
 
@@ -80,8 +83,12 @@ command.options['list'] = {
 
 command.options['metatile'] = {
     'title': 'metatile=[num]',
-    'description': 'Metatile size.',
-    'default': 2
+    'description': 'Metatile size.'
+};
+
+command.options['scale'] = {
+    'title': 'scale=[num]',
+    'description': 'Scale factor'
 };
 
 command.options['concurrency'] = {
@@ -104,20 +111,51 @@ command.prototype.initialize = function(plugin, callback) {
         _(opts).extend(JSON.parse(process.env.tilemillConfig));
     opts.files = path.resolve(opts.files);
     opts.project = plugin.argv._[1];
-    opts.filepath = path.resolve(plugin.argv._[2]);
+    var export_filename = plugin.argv._[2];
+    if (!export_filename) return plugin.help();
+    opts.filepath = path.resolve(export_filename.replace(/^~/,process.env.HOME));
     callback = callback || function() {};
     this.opts = opts;
+    var cmd = this;
 
-    // Write crash log
-    if (opts.log) {
-        process.on('uncaughtException', function(err) {
-            fs.writeFileSync(opts.filepath + '.crashlog', err.stack || err.toString());
+    // Note: this is reset again below, to reflect any changes in the output name
+    process.title = 'tm-' + path.basename(opts.filepath);
+
+    // Write export-specific crash log
+    process.on('uncaughtException', function(err) {
+        cmd.error(err, function() {
+            var crash_log = opts.filepath + '.crashlog';
+            if (opts.log) {
+                console.warn('Export process died, log written to: ' + crash_log);
+                fs.writeFileSync(crash_log, err.stack || err.toString());
+            } else {
+                console.warn('Export process died: ' + err.stack || err.toString());
+            }
+            // force exit here because cleanup in tilelive is not working leading to:
+            // Error: SQLITE_IOERR: disk I/O error
+            // https://github.com/mapbox/tilemill/issues/1360
+            process.exit(0);
         });
-    }
+    });
+
+    process.on('exit', function(code, signal) {
+        console.warn('Exiting process [' + process.title + ']');
+        if (code !== 0)
+        {
+            crashutil.display_crash_log(function(err,logname) {
+                if (err) {
+                    console.warn(err.stack || err.toString());
+                }
+                if (logname) {
+                    console.warn("[tilemill] Please post this crash log: '" + logname + "' to https://github.com/mapbox/tilemill/issues");
+                }
+            });
+        }
+    });
 
     // Validation.
     if (!opts.project || !opts.filepath) return plugin.help();
-    if (!path.existsSync(path.dirname(opts.filepath)))
+    if (!existsSync(path.dirname(opts.filepath)))
         return this.error(new Error('Export path does not exist: ' + path.dirname(opts.filepath)));
 
     // Format.
@@ -136,9 +174,11 @@ command.prototype.initialize = function(plugin, callback) {
         opts.height = parseInt(opts.height, 10);
     if (!_(opts.metatile).isUndefined())
         opts.metatile = parseInt(opts.metatile, 10);
+    if (!_(opts.scale).isUndefined())
+        opts.scale = parseInt(opts.scale, 10);
 
     // Rename the output filepath using a random hash if file already exists.
-    if (path.existsSync(opts.filepath) &&
+    if (existsSync(opts.filepath) &&
         _(['png','pdf','svg','mbtiles']).include(opts.format)) {
         var hash = crypto.createHash('md5')
             .update(+new Date + '')
@@ -158,14 +198,13 @@ command.prototype.initialize = function(plugin, callback) {
     if (opts.format === 'upload') return this[opts.format](this.complete);
 
     // Load project, localize and call export function.
-    var cmd = this;
     var model = new models.Project({id:opts.project});
     Step(function() {
         if (!cmd.opts.quiet) process.stderr.write('Loading project...');
         Bones.utils.fetch({model:model}, this);
     }, function(err) {
         if (err) return cmd.error(err, function() {
-            process.stderr.write(err.stack + '\n');
+            process.stderr.write(err.stack || err.toString() + '\n');
             process.exit(1);
         });
         if (!cmd.opts.quiet) process.stderr.write(' done.\n');
@@ -179,6 +218,7 @@ command.prototype.initialize = function(plugin, callback) {
         model.localize(model.toJSON(), this);
     }, function(err) {
         if (err) return cmd.error(err, function() {
+            process.stderr.write(err.stack || err.toString() + '\n');
             process.exit(1);
         });
 
@@ -188,7 +228,9 @@ command.prototype.initialize = function(plugin, callback) {
             version: model.mml.version || '1.0.0',
             minzoom: !_(opts.minzoom).isUndefined() ? opts.minzoom : model.get('minzoom'),
             maxzoom: !_(opts.maxzoom).isUndefined() ? opts.maxzoom : model.get('maxzoom'),
-            bounds: !_(opts.bbox).isUndefined() ? opts.bbox : model.get('bounds')
+            bounds: !_(opts.bbox).isUndefined() ? opts.bbox : model.get('bounds'),
+            scale: !_(opts.scale).isUndefined() ? opts.scale : model.get('scale'),
+            metatile: !_(opts.metatile).isUndefined() ? opts.metatile : model.get('metatile')
         });
 
         // Unset map center if outside bounds.
@@ -207,15 +249,19 @@ command.prototype.initialize = function(plugin, callback) {
         case 'png':
         case 'svg':
         case 'pdf':
+            console.log('Rendering file');
             cmd.image(model, cmd.complete);
             break;
         case 'upload':
+            console.log('Uploading new export');
             cmd.upload(model, cmd.complete);
             break;
         case 'sync':
+            console.log('Syncing export with existing upload');
             cmd.sync(model, cmd.complete);
             break;
         default:
+            console.log('Rendering export');
             cmd.tilelive(model, cmd.complete);
             break;
         }
@@ -223,14 +269,17 @@ command.prototype.initialize = function(plugin, callback) {
 };
 
 command.prototype.complete = function(err, data) {
+    console.log('Completing export process');
     if (err) {
+        console.warn(err.stack || err.toString() + '\n');
         this.error(err, function() {
-            process.exit(1);
+            process.exit(0);
         });
     } else {
         data = _(data||{}).defaults({
             status: 'complete',
             progress: 1,
+            remaining: 0,
             updated: +new Date()
         });
         this.put(data, process.exit);
@@ -258,7 +307,9 @@ command.prototype.put = function(data, callback) {
     // Allow commands to filter.
     if (this.putFilter) data = this.putFilter(data);
 
-    if (!this.opts.url) return callback();
+    if (!this.opts.url) {
+        return callback();
+    }
     request.put({
         uri: this.opts.url,
         headers: {
@@ -317,10 +368,12 @@ command.prototype.image = function(project, callback) {
         strict: false,
         base: path.join(this.opts.files, 'project', project.id) + '/'
     });
-    map.bufferSize = this.opts.bufferSize;
     map.extent = sm.convert(project.mml.bounds, '900913');
     try {
-        map.renderFileSync(this.opts.filepath, { format: this.opts.format });
+        map.renderFileSync(this.opts.filepath, {
+            format: this.opts.format,
+            scale: project.mml.scale
+        });
         callback();
     } catch(err) {
         callback(err);
@@ -375,7 +428,10 @@ command.prototype.tilelive = function (project, callback) {
             xml: project.xml,
             mml: project.mml,
             pathname: path.join(opts.files, 'project', project.id, project.id + '.xml'),
-            query: { bufferSize: opts.bufferSize, metatile: opts.metatile }
+            query: {
+                metatile: project.mml.metatile,
+                scale: project.mml.scale
+            }
         };
 
         var to = {
@@ -416,6 +472,7 @@ command.prototype.tilelive = function (project, callback) {
 
         task.on('finished', function() {
             if (!cmd.opts.quiet) console.warn('\nfinished');
+            callback();
         });
 
         task.start(function(err) {
@@ -430,7 +487,7 @@ command.prototype.tilelive = function (project, callback) {
         var progress = stats.processed / stats.total;
         var remaining = cmd.remaining(progress, task.started);
         cmd.put({
-            status: progress < 1 ? 'processing' : 'complete',
+            status: 'processing',
             progress: progress,
             remaining: remaining,
             updated: +new Date(),
@@ -455,43 +512,39 @@ command.prototype.tilelive = function (project, callback) {
 };
 
 command.prototype.upload = function (callback) {
+    if (!this.opts.syncAccount || !this.opts.syncAccessToken)
+        return callback(new Error('MapBox Hosting account must be authorized.'));
+
     var cmd = this;
     var key;
     var bucket;
-    var mapURL = '';
-    var freeURL = '';
-    var modelURL = '';
+    var proxy = Bones.plugin.config.httpProxy || process.env.HTTP_PROXY;
+    var mapURL = _('<%=base%>/<%=account%>/map/<%=handle%>')
+        .template({
+            base: this.opts.syncURL,
+            account: this.opts.syncAccount,
+            handle: this.opts.project
+        });
+    var modelURL = _('<%=base%>/api/Map/<%=account%>.<%=handle%>?access_token=<%=token%>')
+        .template({
+            base: this.opts.syncURL,
+            account: this.opts.syncAccount,
+            handle: this.opts.project,
+            token: this.opts.syncAccessToken
+        });
     var hash = crypto.createHash('md5')
         .update(+new Date + '')
         .digest('hex')
         .substring(0, 6);
-    var policyEndpoint = url.format({
-        protocol: 'http:',
-        host: this.opts.mapboxHost || 'api.tiles.mapbox.com',
-        pathname: '/v2/'+ hash + '/upload.json'
-    });
-
-    // Set URLs for account uploads.
-    if (this.opts.syncAccount && this.opts.syncAccessToken) {
-        mapURL = _('<%=base%>/<%=account%>/map/<%=handle%>')
-            .template({
-                base: this.opts.syncURL,
-                account: this.opts.syncAccount,
-                handle: this.opts.project
-            });
-        modelURL = _('<%=base%>/api/Map/<%=account%>.<%=handle%>?access_token=<%=token%>')
-            .template({
-                base: this.opts.syncURL,
-                account: this.opts.syncAccount,
-                handle: this.opts.project,
-                token: this.opts.syncAccessToken
-            });
-    }
+    var policyEndpoint = url.format(_(url.parse(this.opts.syncAPI)).extend({
+            pathname: '/v2/'+ hash + '/upload.json'
+        }));
 
     Step(function() {
         request.get({
             uri: policyEndpoint,
-            headers: { 'Host': url.parse(policyEndpoint).host }
+            headers: { 'Host': url.parse(policyEndpoint).host },
+            proxy: proxy
         }, this);
     }, function(err, resp, body) {
         if (err) throw err;
@@ -522,16 +575,29 @@ command.prototype.upload = function (callback) {
             .join(''));
         var terminate = new Buffer('\r\n--' + boundary + '--', 'ascii');
 
-        var dest = http.request({
-            host: bucket + '.s3.amazonaws.com',
-            path: '/',
+        var opts = {
             method: 'POST',
             headers: {
                 'Content-Type': 'multipart/form-data; boundary=' + boundary,
                 'Content-Length': stat.size + multipartBody.length + terminate.length,
                 'X_FILE_NAME': filename
             }
-        });
+        };
+        if (proxy) {
+            var parsed = url.parse(proxy);
+            opts.host = parsed.hostname;
+            opts.port = parsed.port;
+            opts.path = 'http://' + bucket + '.s3.amazonaws.com';
+            opts.headers.Host = 'http://' + bucket + '.s3.amazonaws.com';
+            if (parsed.auth) {
+                opts.headers['proxy-authorization'] = 'Basic ' + new Buffer(parsed.auth).toString('base64')
+            }
+        } else {
+            opts.host = bucket + '.s3.amazonaws.com';
+            opts.path = '/';
+        }
+        var dest = http.request(opts);
+
         dest.on('response', function(resp) {
             var data = '';
             var callback = function(err) {
@@ -551,7 +617,6 @@ command.prototype.upload = function (callback) {
                         message += ' (' + parsed.code[0] + ' - ' + parsed.message[0] + ')';
                     return this(new Error(message));
                 }
-                freeURL = resp.headers.location.split('?')[0];
                 this();
             }.bind(this);
             resp.on('data', function(chunk) { chunk += data; });
@@ -576,7 +641,7 @@ command.prototype.upload = function (callback) {
                 updated = Date.now();
                 cmd.put({
                     progress: progress,
-                    status: progress < 1 ? 'processing' : 'complete',
+                    status: 'processing',
                     remaining: cmd.remaining(progress, started),
                     updated: updated
                 });
@@ -588,12 +653,12 @@ command.prototype.upload = function (callback) {
             .pipe(dest, {end: false});
     }, function(err) {
         if (err) throw err;
-        if (!modelURL) return this(); // Free
-
-        request.get(modelURL, this);
+        request.get({
+            uri: modelURL,
+            proxy: proxy
+        }, this);
     }, function(err, res, body) {
         if (err) throw err;
-        if (!modelURL) return this(); // Free
 
         // Let Step catch thrown errors here.
         var model = _(res.statusCode === 404 ? {} : JSON.parse(body)).extend({
@@ -603,13 +668,26 @@ command.prototype.upload = function (callback) {
             status: 'pending',
             url: 'http://' + bucket + '.s3.amazonaws.com/' + key
         });
-        request.put({ url:modelURL, json:model }, this);
+        request.put({
+            url: modelURL,
+            json: model,
+            proxy: proxy
+        }, this);
     }, function(err, res, body) {
-        if (err)
+        console.log('MapBox Hosting account response: ' + util.inspect(body));
+        if (err) {
             return callback(err);
-        if (modelURL && res.statusCode !== 200)
-            return callback(new Error('Map publish failed: ' + res.statusCode));
-        callback(null, { url:modelURL ? mapURL : freeURL });
+        }
+        if (modelURL && res.statusCode !== 200) {
+            var msg;
+            if (body && body.message != undefined) {
+                msg = body.message;
+            } else {
+                msg = 'Map publish failed: ' + res.statusCode;
+            }
+            return callback(new Error(msg));
+        }
+        callback(null, { url:mapURL });
     });
 };
 
@@ -626,8 +704,9 @@ command.prototype.sync = function (project, callback) {
         id: project.id,
         time: + new Date
     });
+    cmd.opts.format = 'mbtiles';
     Step(function() {
-        cmd.mbtiles(project, this);
+        cmd.tilelive(project, this);
     }, function(err) {
         if (err) throw err;
         modifier = 0.5;

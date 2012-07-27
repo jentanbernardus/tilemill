@@ -86,7 +86,13 @@ view.prototype.favoriteUpdate = function(ev) {
     var target = $(ev.currentTarget);
     var favorite = target.siblings('a.favorite');
     var uri = target.val();
-    if (uri.match(/^(\/|http:\/\/|(.+\s)?dbname=[\w]+)/)) {
+    var match;
+    if (window.abilities.platform === 'win32') {
+       match = uri.match(/^(\/|\\|[\w]:\\|http:\/\/|(.+\s)?dbname=[\w]+)/);
+    } else {
+       match = uri.match(/^(\/|http:\/\/|(.+\s)?dbname=[\w]+)/);
+    }
+    if (match) {
         favorite.removeClass('hidden');
         if (this.favorites.isFavorite(uri)) {
             favorite.addClass('active');
@@ -118,7 +124,8 @@ view.prototype.placeholderUpdate = function(ev) {
 // @TODO smarter handling for this or abandon the idea if it turns out to be
 // untenable for queries.
 view.prototype.autoname = function(source) {
-    return _(source.split('/')).chain()
+    var sep = window.abilities.platform === 'win32' ? '\\' : '/';
+    return _(source.split(sep)).chain()
         .map(function(chunk) { return chunk.split('\\'); })
         .flatten()
         .last()
@@ -139,8 +146,9 @@ view.prototype.browse = function(ev) {
         if (form.hasClass('layer-sqlite')) return 'sqlite';
         if (form.hasClass('layer-postgis')) return 'favoritesPostGIS';
     })(form);
-    var components = $('input.browsable', form).val().split('/');
-    var location = components.slice(0, components.length - 1).join('/');
+    var sep = window.abilities.platform === 'win32' ? '\\' : '/';
+    var components = $('input.browsable', form).val().split(sep);
+    var location = components.slice(0, components.length - 1).join(sep);
 
     target
         .toggleClass('active')
@@ -192,10 +200,16 @@ view.prototype.save = function(e) {
         attr.srs = attr.srs || '';
     }
     // Advanced options.
-    if (attr.advanced) {
-        attr.Datasource = _(attr.Datasource||{}).defaults(attr.advanced);
-        delete attr.advanced;
-    }
+    var regular = _(['type', 'file','table', 'host', 'port', 'user', 
+        'password', 'dbname', 'extent', 'key_field', 'geometry_field',
+        'type', 'attachdb', 'srs', 'id', 'project']);
+
+    var result = {};
+    _(attr.Datasource || {}).each(function(v, k) {
+        if (regular.include(k)) result[k] = v;
+    })
+    attr.Datasource = _.extend(result, attr.advanced);
+
     // Parse PostGIS connection options.
     if (attr.connection) {
         var allowedArgs = ['user', 'password', 'dbname', 'port', 'host'];

@@ -27,7 +27,6 @@ models.Config.prototype.sync = function(method, model, success, error) {
     case 'update':
         // Filter out keys that may not be written.
         var allowedKeys = [
-            'bufferSize',
             'files',
             'syncAccount',
             'syncAccessToken',
@@ -35,10 +34,11 @@ models.Config.prototype.sync = function(method, model, success, error) {
             'updatesTime',
             'updatesVersion',
             'profile',
-            'guid'
+            'guid',
+            'httpProxy'
         ];
         var data = _(model.toJSON()).reduce(function(memo, val, key) {
-            if (key === 'files') val = val.replace('~', process.env.HOME);
+            if (key === 'files') val = val.replace(/^~/, process.env.HOME);
             if (_(allowedKeys).include(key)) memo[key] = val;
             return memo;
         }, {});

@@ -3,11 +3,12 @@ var fsutil = require('../lib/fsutil');
 var path = require('path');
 var Step = require('step');
 var defaults = models.Config.defaults;
-var spawn = require('child_process').spawn;
 var mapnik = require('mapnik');
 var semver = require('semver');
 var os = require('os');
 var crypto = require('crypto');
+// node v6 -> v8 compatibility
+var existsSync = require('fs').existsSync || require('path').existsSync;
 
 command = Bones.Command.extend();
 
@@ -87,7 +88,7 @@ command.prototype.bootstrap = function(plugin, callback) {
 
     var settings = Bones.plugin.config;
     settings.host = false;
-    settings.files = path.resolve(settings.files);
+    settings.files = path.resolve(settings.files.replace(/^~/, process.env.HOME));
     settings.coreUrl = settings.coreUrl || 'localhost:' + settings.port;
     settings.tileUrl = settings.tileUrl || 'localhost:' + settings.tilePort;
 
@@ -118,18 +119,18 @@ command.prototype.bootstrap = function(plugin, callback) {
     };
 
     var configDir = path.join(process.env.HOME, '.tilemill');
-    if (!path.existsSync(configDir)) {
+    if (!existsSync(configDir)) {
         console.warn('Creating configuration dir %s', configDir);
         fsutil.mkdirpSync(configDir, 0755);
     }
 
-    if (!path.existsSync(settings.files)) {
+    if (!existsSync(settings.files)) {
         console.warn('Creating files dir %s', settings.files);
         fsutil.mkdirpSync(settings.files, 0755);
     }
     ['export', 'project', 'cache'].forEach(function(key) {
         var dir = path.join(settings.files, key);
-        if (!path.existsSync(dir)) {
+        if (!existsSync(dir)) {
             console.warn('Creating %s dir %s', key, dir);
             fsutil.mkdirpSync(dir, 0755);
             if (key === 'project' && settings.examples) {
@@ -160,35 +161,52 @@ command.prototype.bootstrap = function(plugin, callback) {
     ]).chain()
         .map(function(p, index) {
             try {
-            return fs.readdirSync(p).map(function(dir) {
+            return fs.readdirSync(p).filter(function(d) {
+                return d[0] !== '.';
+            }).map(function(dir) {
+                var data;
                 try {
-                var pkg = path.join(p, dir, 'package.json');
-                var data = JSON.parse(fs.readFileSync(pkg, 'utf8'));
-                data.core = index === 0;
-                data.id = data.name;
+                    var pkg = path.join(p, dir, 'package.json');
+                    data = JSON.parse(fs.readFileSync(pkg, 'utf8'));
+                    data.core = index === 0;
+                    data.id = data.name;
 
-                // Engines key missing.
-                if (!data.engines || !data.engines.tilemill) {
-                    console.warn('Plugin [%s] "engines" missing.',
-                        Bones.utils.colorize(data.name, 'red'));
-                    return false;
-                }
-                // Check that TileMill version satisfies plugin requirements.
-                // Pass data through such that the plugin can be shown in the
-                // UI as failing to satisfy requirements.
-                if (!semver.satisfies(Bones.plugin.abilities.tilemill.version, data.engines.tilemill)) {
-                    console.warn('Plugin [%s] requires TileMill %s.',
-                        Bones.utils.colorize(data.name, 'red'),
-                        data.engines.tilemill);
+                    // Engines key missing.
+                    if (!data.engines || !data.engines.tilemill) {
+                        console.warn('Plugin [%s] "engines" missing.',
+                            Bones.utils.colorize(data.name, 'red'));
+                        return false;
+                    }
+                    // Check that TileMill version satisfies plugin requirements.
+                    // Pass data through such that the plugin can be shown in the
+                    // UI as failing to satisfy requirements.
+                    if (!semver.satisfies(Bones.plugin.abilities.tilemill.version, data.engines.tilemill)) {
+                        console.warn('Plugin [%s] requires TileMill %s.',
+                            Bones.utils.colorize(data.name, 'red'),
+                            data.engines.tilemill);
+                        return data;
+                    }
+                    // Load plugin
+                    // NOTE: even broken plugins (ones that throw upon require) will likely get partially loaded here
+                    require('bones').load(path.join(p, dir));
+                    console.warn('Plugin [%s] loaded.', Bones.utils.colorize(data.name, 'green'));
                     return data;
+                } catch (err) {
+                    if (data && data.name) {
+                        // consider, as broken, plugins which partially loaded but threw so that
+                        // the user can know to uninstall them, because unloading is not possible
+                        data.broken = true;
+                        console.error('Plugin [' + data.name + '] unable to be loaded: ' + err.stack || err.toString());
+                        return data;
+                    } else {
+                        console.error(err);
+                        return false;
+                    }
                 }
-                // Load plugin.
-                require('bones').load(path.join(p, dir));
-                console.warn('Plugin [%s] loaded.', Bones.utils.colorize(data.name, 'green'));
-                return data;
-                } catch (e) { console.error(e); return false; }
             });
-            } catch(e) { return []; }
+            } catch(err) {
+                return [];
+            }
         })
         .flatten()
         .compact()
@@ -198,41 +216,7 @@ command.prototype.bootstrap = function(plugin, callback) {
         }, {})
         .value();
 
-    // Config values to save.
-    var attr = {};
-
-    // Skip latest TileMill version check if disabled or
-    // we've checked the npm repo in the past 24 hours.
-    var skip = !settings.updates || (settings.updatesTime > Date.now() - 864e5);
-    var npm = require('npm');
-    Step(function() {
-        if (skip) return this();
-
-        console.warn('Checking for new version of TileMill...');
-        npm.load({}, this);
-    }, function(err) {
-        if (skip || err) return this(err);
-
-        npm.localPrefix = path.join(process.env.HOME, '.tilemill');
-        npm.commands.view(['tilemill'], true, this);
-    }, function(err, resp) {
-        if (skip || err) return this(err);
-
-        if (!_(resp).size()) throw new Error('Latest TileMill package not found.');
-        if (!_(resp).toArray()[0].version) throw new Error('No version for TileMill package.');
-        console.warn('Latest version of TileMill is %s.', _(resp).toArray()[0].version);
-        attr.updatesVersion = _(resp).toArray()[0].version;
-        attr.updatesTime = Date.now();
-        this();
-    }, function(err) {
-        // Continue despite errors but log them to the console.
-        if (err) console.error(err);
-        // Save any config attributes.
-        if (_(attr).keys().length) (new models.Config).save(attr, {
-            error: function(m, err) { console.error(err); }
-        });
-        callback();
-    });
+    callback();
 };
 
 command.prototype.initialize = function(plugin, callback) {

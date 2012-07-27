@@ -33,6 +33,10 @@ models.Project.prototype.sync = function(method, model, success, error) {
         break;
     case 'create':
     case 'update':
+        if (method == 'update') {
+            // clear mapnik's global cache of markers and shapefiles
+            mapnik.clearCache();
+        }
         saveProject(model, function(err, model) {
             return err ? error(err) : success(model);
         });
@@ -233,8 +237,8 @@ function loadProject(model, callback) {
             format: 'grid.json',
             updated: object._updated
         })];
+        object.template = template(object.interactivity);
         if (object.interactivity) {
-            object.template = template(object.interactivity);
             object.interactivity.fields = fields(object);
         }
         this();
@@ -310,6 +314,13 @@ function saveProject(model, callback) {
             return s.id || s;
         });
 
+        data.Layer = _(data.Layer).map(function(l) {
+            if (l.Datasource.file && !l.Datasource.file.indexOf(modelPath)) {
+                l.Datasource.file = path.relative(modelPath, l.Datasource.file);
+            }
+            return l;
+        });
+
         _(data).chain()
             .keys()
             .filter(function(k) { return schema[k] && !schema[k].ignore })
@@ -346,9 +357,7 @@ function saveProject(model, callback) {
             _updated: updated,
             tiles: [tiles],
             grids: [grids],
-            template: model.get('interactivity')
-                ? template(model.get('interactivity'))
-                : undefined
+            template: template(model.get('interactivity'))
         });
 
         if (err) throw err;
@@ -382,6 +391,7 @@ function compileStylesheet(mml, callback) {
     var fonts = styles.match(/font-directory:[\s]*url\(['"]*([^'"\)]*)['"]*\)/);
     if (fonts) {
         fonts = fonts[1];
+        // @TODO - will be broken on windows
         fonts = fonts.charAt(0) !== '/'
             ? path.join(settings.files, 'project', mml.id, fonts)
             : fonts;
@@ -397,10 +407,15 @@ function compileStylesheet(mml, callback) {
     // Hard clone the model JSON to avoid any alterations to it.
     // @TODO: is this necessary?
     var data = JSON.parse(JSON.stringify(mml));
-    new carto.Renderer(env).render(data, function(err, output) {
-        if (err) callback(err);
-        else callback(null, output);
-    });
+    // try/catch here as per https://github.com/mapbox/tilemill/issues/1370
+    try {
+        new carto.Renderer(env).render(data, function(err, output) {
+            if (err) callback(err);
+            else callback(null, output);
+        });
+    } catch (err) {
+        callback(err);
+    }
 }
 
 var localizedCache = {};
@@ -418,11 +433,6 @@ models.Project.prototype.localize = function(mml, callback) {
     }
 
     if (localizedCache[key]) {
-        // clear mapnik cache so we respect
-        // any changed shapefiles or markers
-        // TODO - remove this if () once node-mapnik is tagged
-        if (mapnik.clearCache)
-            mapnik.clearCache();
         if (mml._updated === 0) {
             // Caller may set _updated to 0 to force a cache clear.
             delete localizedCache[key];
@@ -506,7 +516,9 @@ function fields(opts) {
 
 // Generate combined template from templates.
 function template(opts) {
-    opts = opts || {};
+    if (!opts || !opts.layer || (!opts.template_teaser && !opts.template_full && !opts.template_location))
+        return "";
+
     return '{{#__location__}}' + (opts.template_location || '') + '{{/__location__}}' +
         '{{#__teaser__}}' + (opts.template_teaser || '') + '{{/__teaser__}}' +
         '{{#__full__}}' + (opts.template_full || '') + '{{/__full__}}';

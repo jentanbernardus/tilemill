@@ -42,13 +42,6 @@ NSString *TileMillBrowserLoadCompleteNotification = @"TileMillBrowserLoadComplet
     [prefs setUsesPageCache:NO];
 }
 
-- (void)dealloc
-{
-    [webView release];
-    
-    [super dealloc];
-}
-
 #pragma mark -
 
 - (void)loadInitialRequestWithPort:(NSInteger)inPort
@@ -185,7 +178,7 @@ NSString *TileMillBrowserLoadCompleteNotification = @"TileMillBrowserLoadComplet
 {
     if ([request timeoutInterval] < kTileMillRequestTimeout)
     {
-        NSMutableURLRequest *newRequest = [[request copy] autorelease];
+        NSMutableURLRequest *newRequest = [request mutableCopy];
         
         [newRequest setTimeoutInterval:kTileMillRequestTimeout];
         
@@ -231,8 +224,13 @@ NSString *TileMillBrowserLoadCompleteNotification = @"TileMillBrowserLoadComplet
 {
     // continually ensure bounce scrolling is disabled on Lion
     //
-    self.webView.mainFrame.frameView.documentView.enclosingScrollView.horizontalScrollElasticity = NSScrollElasticityNone;
-    self.webView.mainFrame.frameView.documentView.enclosingScrollView.verticalScrollElasticity   = NSScrollElasticityNone;
+    NSScrollView *enclosingScrollView = self.webView.mainFrame.frameView.documentView.enclosingScrollView;
+    
+    if ([enclosingScrollView respondsToSelector:@selector(setHorizontalScrollElasticity:)])
+    {
+        enclosingScrollView.horizontalScrollElasticity = NSScrollElasticityNone;
+        enclosingScrollView.verticalScrollElasticity   = NSScrollElasticityNone;
+    }
 }
 
 @end

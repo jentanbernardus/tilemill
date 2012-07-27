@@ -20,15 +20,14 @@ if [ -z "$DIST" ]; then
   exit
 fi
 
-if [[ "$DIST" != "natty" && "$DIST" != "oneiric" && "$DIST" != "katya" ]]; then
+if [[ "$DIST" != "lucid" && "$DIST" != "maverick" && "$DIST" != "natty" && "$DIST" != "oneiric" && "$DIST" != "precise" && "$DIST" != "katya" && "$DIST" != "lisa" ]]; then
   echo "Your distribution $DIST is not supported."
   exit
 fi
 
-pkexec /bin/bash -c "apt-get update --yes &&
-    apt-get install --yes python-software-properties &&
+pkexec /bin/bash -c "apt-get install --yes python-software-properties &&
     yes | apt-add-repository ppa:developmentseed/mapbox &&
     apt-get update --yes &&
-    apt-get install --yes tilemill"
+    apt-get install --yes tilemill libmapnik nodejs"
 
 read -sp "Press [ENTER] to quit."

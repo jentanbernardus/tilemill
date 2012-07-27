@@ -8,9 +8,9 @@ on the [TileMill website](http://mapbox.com/tilemill).
 
 # Running tests
 
-Install expresso and run the tests
+Install mocha and run the tests
 
-    npm install expresso
+    npm install mocha
     npm test
 
 
@@ -43,3 +43,5 @@ For more info see: http://postgis.refractions.net/documentation/manual-1.5/ch02.
 ## View the site at:
 
     http://localhost:4000/tilemill/docs/
+    
+    

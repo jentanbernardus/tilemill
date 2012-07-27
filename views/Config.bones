@@ -3,10 +3,13 @@ view = Backbone.View.extend();
 view.prototype.events = {
     'change input[name=updates]': 'updates',
     'change input[name=profile]': 'profile',
+    'change input[name=httpProxy]': 'proxy',
+    'keyup input[name=httpProxy]': 'proxy',
     'keyup input[name=files]': 'files',
     'change input[name=files]': 'files',
     'click input[type=submit]': 'save',
-    'click a[href=#disable]': 'disable'
+    'click a[href=#disable]': 'disable',
+    'click a[href="/oauth/mapbox"]': 'proxyWarning'
 };
 
 view.prototype.initialize = function(options) {
@@ -18,10 +21,12 @@ view.prototype.initialize = function(options) {
         'updates',
         'disable',
         'save',
-        'restart'
+        'restart',
+        'proxy'
     );
     this.model.bind('change', this.changed);
     this.model.bind('change:files', this.restart);
+    this.model.bind('change:httpProxy', this.restart);
     this.render();
 };
 
@@ -43,6 +48,11 @@ view.prototype.saved = function() {
 
 view.prototype.files = function(ev) {
     this.model.set({files: $(ev.currentTarget).val()});
+    return false;
+};
+
+view.prototype.proxy = function(ev) {
+    this.model.set({httpProxy: $(ev.currentTarget).val()});
     return false;
 };
 
@@ -87,4 +97,13 @@ view.prototype.restart = function() {
     this._restart = true;
 };
 
-
+view.prototype.proxyWarning = function() {
+    // Work around for lack of proxy support in topcube
+    if (this.model.get('httpProxy') && !this.model.get('server')) {
+        var view = new views.Modal({content: 'Unable to authorize with HTTP proxy.'});
+        var msg = 'To authorize, open this link in a proxy enabled browser: <br> ' + window.location.origin + '/oauth/mapbox';
+        view.el.children('.content').append($('<a href="/oauth/mapbox" target="_blank">'+msg+'</a>'));
+        view.el.children('.bug').remove();
+        return false;
+    }
+}

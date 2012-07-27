@@ -5,22 +5,27 @@ controller.prototype.initialize = function() {
     new views.App({ el: $('body') });
 
     // Check whether there is a new version of TileMill or not.
-    (new models.Config).fetch({success: function(m) {
-        if (window.abilities.platform === 'darwin') return;
-        if (!m.get('updates')) return;
-        if (!semver.gt(m.get('updatesVersion'),
-            window.abilities.tilemill.version)) return;
-        new views.Modal({
-            content:_('\
-                A new version of TileMill is available.<br />\
-                Update to TileMill <%=version%> today.<br/>\
-                <small>You can disable update notifications in the <strong>Settings</strong> panel.</small>\
-            ').template({ version:m.get('updatesVersion') }),
-            affirmative: 'Update',
-            negative: 'Later',
-            callback: function() { window.open('http://tilemill.com') }
-        });
-    }});
+    $.ajax({
+        url: '/api/updatesVersion',
+        type: 'GET',
+        dataType: 'json',
+        success: function(data) {
+            if (window.abilities.platform === 'darwin') return;
+            if (!data.updates) return;
+            if (!semver.gt(data.updatesVersion,
+                    window.abilities.tilemill.version)) return;
+            new views.Modal({
+                content:_('\
+                            A new version of TileMill is available.<br />\
+                            Update to TileMill <%=version%> today.<br/>\
+                            <small>You can disable update notifications in the <strong>Settings</strong> panel.</small>\
+                            ').template({ version:data.updatesVersion }),
+                    affirmative: 'Update',
+                negative: 'Later',
+                callback: function() { window.open('http://tilemill.com') }
+            });
+        }
+    });
 
     // Add catchall routes for error page.
     this.route(/^(.*?)/, 'error', this.error);
@@ -34,10 +39,12 @@ controller.prototype.routes = {
     '/project/:id/export': 'projectExport',
     '/project/:id/export/:format': 'projectExport',
     '/project/:id/settings': 'projectSettings',
+    '/oauth/success': 'oauthSuccess',
+    '/oauth/error': 'oauthError',
     '/manual': 'manual',
     '/manual/:page?': 'manual',
     '/settings': 'config',
-    '/plugins': 'plugins'
+    '/plugins': 'plugins',
 };
 
 controller.prototype.goto = function(path) {
@@ -49,13 +56,14 @@ controller.prototype.error = function() {
     new views.Error(new Error('Page not found.'));
 };
 
-controller.prototype.projects = function() {
+controller.prototype.projects = function(next) {
     (new models.Projects()).fetch({
         success: function(collection) {
             new views.Projects({
                 el: $('#page'),
                 collection: collection
             });
+            if (next) next();
         },
         error: function(m, e) { new views.Modal(e); }
     });
@@ -123,6 +131,26 @@ controller.prototype.plugins = function() {
     new views.Plugins({
         el: $('#page'),
         collection: new models.Plugins(_(window.abilities.plugins).toArray())
+    });
+};
+
+controller.prototype.oauthSuccess = function() {
+    this.projects(function() {
+        new views.Modal({
+            content: 'Your MapBox account was authorized successfully.',
+            negative: '',
+            callback: function() {}
+        });
+    });
+};
+
+controller.prototype.oauthError = function() {
+    this.projects(function() {
+        new views.Modal({
+            content: 'An error occurred while authorizing your MapBox account.',
+            negative: '',
+            callback: function() {}
+        });
     });
 };
 

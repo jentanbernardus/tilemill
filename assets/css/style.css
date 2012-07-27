@@ -69,6 +69,17 @@ body.loading > .mask { position:fixed; }
 
 .scrolling { overflow:auto; }
 
+.warning {
+  padding:4px;
+  border:1px solid #DC3F19;
+  box-shadow:rgba(0,0,0,.1) 0px 1px 3px;
+  }
+
+.warning-text {
+  color:#DC3F19;
+  font-size:11px;
+  }
+
 a {
   color:#222;
   text-decoration:none;
@@ -628,12 +639,16 @@ ul.layers {
 .layers li {
   position:relative;
   border-bottom:1px solid rgba(0,0,0,0.1);
-  padding:5px 70px 4px 30px;
+  padding:5px 130px 4px 30px;
   overflow:hidden;
   white-space:nowrap;
   min-width:60px;
   max-width:240px;
   }
+
+.layers li.status-off { color:#999; }
+.layers li.status-off .icon.geometry { opacity:0.5; }
+.layers li.status-off .icon.visibility { background-position:-700px -180px; }
 
 .layers .ui-sortable-helper {
   background:#fe8;
@@ -935,8 +950,9 @@ li:hover .icon { display:block; }
   }
 
 .icon.edit           { background-position:0px -180px; }
-.icon.inspect        { background-position:-20px -180px; }
+.icon.extent         { background-position:-20px -180px; }
 .icon.delete         { background-position:-60px -180px; }
+.icon.visibility     { background-position:-640px -180px; }
 .icon.color-picker   { background-position:-40px -180px; }
 .icon.close          { background-position:-80px -180px; }
 .icon.fonts          { background-position:-100px -180px; }
@@ -968,6 +984,7 @@ li:hover .icon { display:block; }
 .icon.cloud             { background-position:-620px -180px; }
 .icon.eye               { background-position:-640px -180px; }
 .icon.upload            { background-position:-680px -180px; }
+.icon.inspect           { background-position:-720px -180px; }
 
 .reverse.edit           { background-position:0px -200px; }
 .reverse.inspect        { background-position:-20px -200px; }
@@ -1219,11 +1236,13 @@ ul.form li label {
   width:100px;
   margin-left:-110px;
   text-align:right;
+  white-space:nowrap;
   }
 
 ul.form .buttons { text-align:center; }
 
 .button.large,
+ul.form .buttons .button,
 ul.form .buttons input {
   display:inline-block;
   padding-top:4px;
@@ -1554,6 +1573,7 @@ div.fonts {
 .exports li.error {
   color:#999;
   background:#f8f8f8;
+  height: 40px;
   }
 
 .exports .i40 {
@@ -1811,3 +1831,35 @@ ul.grid li {
 .exports .status a,
 .features .buttons a,
 .pane .pane-actions a { position:relative; }
+
+/* Swap retina graphics */
+@media only screen and (-webkit-min-device-pixel-ratio: 1.5),
+  only screen and (-o-min-device-pixel-ratio: 3/2),
+  only screen and (min--moz-device-pixel-ratio: 1.5),
+  only screen and (min-device-pixel-ratio: 1.5) {
+
+  .icon,
+  .wax-point-div,
+  .swatch,
+  .swatch .color,
+  #colorpicker .caret,
+  .palette a.active:after {
+    background-image:url(../images/sprite_2x.png);
+    background-size: 800px 480px;
+  }
+
+  .about {
+    background-image:url(/assets/tilemill/images/tilemill_2x.png);
+    background-size: 40px 45px;
+  }
+
+  .loading:after {
+    background-image:url(../images/spinner-reverse_2x.gif);
+    background-size: 20px 20px;
+  }
+
+  .header .spinner {
+    background-image:url(../images/spinner_2x.gif);
+    background-size: 20px 20px;
+  }
+}

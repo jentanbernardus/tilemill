@@ -5,17 +5,92 @@
 ###
 tag: Installation
 layout: changelog
-section: documentation
+section: tilemill
 category: TileMill
 date: 0201-01-30
 title: Changelog
 permalink: /docs/changelog
 releases:
 
+#- version:
+#  date:
+#  size:
+#  sign:
+#
+#  notes:
+#  - Improved support for autodetection of geojson from the cartodb api (node-srs)
+#  - Added support for using escaped URLs to remove datasources (like cartodb)
+#  - Added support for regex in carto filters like `#world[name =~ "A.*"]`
+#  - Added support for quotes in carto filter values like `#world[name2="Sa'ad"]`
+#  - Carto parsing now provides better errors for unmatched parens
+#  - The raster-mode now supports all SVG compositing operations (but uses dashes instead of underscores - so grain_merge is now grain-merge) (Mapnik)
+#  - Support for OS X 10.8 (Mountain Lion)
+#  - Interactivity now works on features that have negative or zero primary key values
+#  - Column names in CSV datasources named 'lng' are now automatically recognized as the longitude column
+#  - Added ability to zoom to layer extents
+#  - Fixed a bug where interactivity templates broke when they ended in a number value
+#  - Added ability to toggle layer visibility
+#  - Version update checking no longer blocks application startup.
+#  - marker-width and marker-height are now expressions
+#  - building-height is now an expression
+#  - Added ability to trigger opening http links by clicking on features using 'location' template
+#  - Added ability to set the metatile size in the project settings
+#  - Added ability to set a map scaling factor in the project settings
+#  - Added support for http proxies
+#  - Added support for remote icons like `point-file: url('http://a.tiles.mapbox.com/v3/marker/pin-l-campsite+000000.png');` (millstone)
+#  - Improved support for handling remote csv and kml files (millstone)
+#  - Added more raster resampling methods like windowed filters of 'blackman' and 'hanning'
+#  - Added ability to upgrade plugins
+#  - Fixed a bug where compatible plugin versions did not show up if there were newer incompatible versions
+
+- version: 0.9.1.213
+  dev: true
+  date: 2012-07-16
+  size: 82080336
+  sign: MCwCFGdG5k5WTaO3Ilg7jh4VE9TmZAcaAhQ8OM3V910YKD9m6DsNOBGdJnqquw==
+
+- version: 0.9.1
+  date: 2012-05-07
+  size: 83455965
+  sign: MC4CFQDvaV9w+7IyMfsd3XZnNOadT70jfAIVAJq14ThnQ4CWG4zs1TwB/zWNTLS2
+
+  notes:
+  - Better error output in logs if a crash occurs during rendering or exports
+  - Now using Node v0.6.17 (previous 0.9.0 release used Node v0.4.12)
+  - Supports PostGIS 2.0 (Mapnik)
+  - Interactivity UI now warns about the need for users to provide a unique key for PostGIS layers.
+  - Invalid fonts no longer prevent startup (Mapnik)
+  - Better reporting of Carto parse errors to UI
+  - Faster exports by detecting solid tiles and avoiding duplicate encoding and storage
+  - Faster refresh after saving (Mapnik)
+  - Fully 64-bit build on Mac OS X (dual 64/32-bit support dropped)
+  - Better support for GDAL rasters - larger rasters can be loaded now without hitting "bad:alloc"
+  - Supports zooming up to z22 (fixed by new Mapnik clipping and ModestMaps respecting project settings)
+  - Now supports epsg projection syntax so that "+init=epsg:4326" can be used as shorthand for "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs" (proj epsg lookup tables now packaged)
+  - Doc fixes to make it clearer how to run a headless [Ubuntu server](http://mapbox.com/tilemill/docs/guides/ubuntu-service)
+  - Grid interactivity rendering faster (using async callbacks in node-mapnik)
+  - KML now supported in Windows build (Mapnik uses OGR built with expat support)
+  - PDF/SVG support now supports markers fully (Mapnik)
+  - Reading interlaced PNG images now works (Mapnik)
+  - Multigeometries are now labeled properly (Mapnik)
+  - Improved support for rendering svg icons from [sjjb](http://www.sjjb.co.uk/mapicons) (Mapnik)
+
+- version: 0.9.0.378
+  dev: true
+  date: 2012-05-02
+  size: 85532293
+  sign: MC0CFQCtx51v+JBQN0M2jCqCdrKLcL+GagIUQve5iGQr4memAnYO1mLTNriHVqA=
+
+- version: 0.9.0.141
+  dev: true
+  date: 2012-04-24
+  size: 82793436
+  sign: MC4CFQDzIVUGGWA9LguQtoA0N1QrKSMuBQIVAKa8mlfzFAotbt6wInGGIs4pPe0G
+
 - version: 0.9.0
-  date: 2011-01-24
-  size: 65347719
-  sign: MC4CFQDPatJHVsDgppDQ3bNS9Tw2BugtFAIVAMiRfz1eankHivWHy/+xsWRJnRYO
+  date: 2012-01-24
+  size: 66944371
+  sign: MCwCFCb/WtaUAuRc16A7Z4MacOODB4uiAhQkPXw+QKnD9UxX/pJ0BaN+asqqKw==
 
   notes:
   - Plugin system for UI components.
@@ -194,16 +269,13 @@ releases:
   - Fix for frequent "Forbidden" errors in Safari.
   - Automatic updates for Mac OS X app.
 
-
 - version: 0.4.2
   notes:
   - Bugfixes.
 
-
 - version: 0.4.1
   notes:
   - Bugfixes.
-
 
 - version: 0.4.0
   notes:
@@ -211,18 +283,15 @@ releases:
   - app.db file from previous versions is not compatible with 0.4
   - Default files directory is now ~/Documents/MapBox
 
-
 - version: 0.3.0
   notes:
   - Basic PostGIS layer support
   - New opacity features in Carto
   - Fix bug that prevent rendering non-interactive tilesets in some cases
 
-
 - version: 0.2.1
   notes:
   - Fix bug with S3 bucket listing
-
 
 - version: 0.2.0
   notes:
@@ -231,7 +300,6 @@ releases:
   - Use Modest Maps for map preview
   - Improved performance
   - Bug fixes
-
 
 - version: 0.1.4
   notes:
