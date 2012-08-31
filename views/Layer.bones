@@ -92,12 +92,20 @@ view.prototype.nameToSrs = function(ev) {
     } else if (name === 'autodetect') {
         el.siblings('input[name=srs]').val('');
     }
+    // Clear extent cache if necessary
+    if ($("select[name='Datasource.extent_cache']").val() == 'auto') {
+        this.extentCacheFlush();
+    }
 };
 
 view.prototype.srsToName = function(ev) {
     var el = $(ev.currentTarget);
     var srs = $(ev.currentTarget).val();
     el.siblings('select[name=srs-name]').val(this.model.srsName(srs));
+    // Clear extent cache if necessary
+    if ($("select[name='Datasource.extent_cache']").val() == 'auto') {
+        this.extentCacheFlush();
+    }
 };
 
 view.prototype.favoriteToggle = function(ev) {
